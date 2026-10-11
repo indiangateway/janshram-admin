@@ -12,9 +12,10 @@ import type {
   SupportTicket, TicketMessage, TicketStats, TicketStatus, TicketPriority, TicketAssignee,
   PlatformSettings, ReferralTotals, Payout, OtpLogEntry, Faq, LegalPage, ChatMessage, UploadSignature,
   MessageLog, MessageLogSummary, KycCheck, KycStatus, KycVerifierInfo,
-  AdminContractor, AdminSubscription, AdminSubscriptionPlan, SubscriptionRevenue,
+  AdminContractor, AdminSubscription, AdminSubscriptionPlan, TrialLengthResult, SubscriptionRevenue,
   AdminProject, AdminProjectWorker, AdminEngagementReview,
   GatewayPayment, GatewayPaymentStats,
+  AdminBlogPost, AdminBlogPostSummary, AdminTestimonial, AdminSocialLink, SocialPlatform,
 } from '../types';
 import type { UploadFolder } from '../upload';
 
@@ -80,6 +81,8 @@ export const httpAdapter: AdminApi = {
     setSuspended: (id, suspended, note) =>
       http.patch<{ subscription: AdminSubscription | null }>(`/admin/subscriptions/${id}/suspend`, { suspended, note }),
     revenue: (days) => http.get<SubscriptionRevenue>('/admin/subscription-revenue', clean({ days })),
+    applyTrialLength: (dryRun?: boolean) =>
+      http.post<TrialLengthResult>('/admin/subscriptions/apply-trial-length', { dryRun }),
   },
 
   providers: {
@@ -221,6 +224,28 @@ export const httpAdapter: AdminApi = {
 
   audit: {
     list: (params) => http.get<Paginated<AuditLogEntry>>('/admin/audit', clean(params)),
+  },
+
+  blog: {
+    list: (params) => http.get<Paginated<AdminBlogPostSummary>>('/admin/blog', clean(params)),
+    get: (id: string) => http.get<{ post: AdminBlogPost }>(`/admin/blog/${id}`),
+    create: (data: Record<string, unknown>) => http.post<{ post: AdminBlogPost }>('/admin/blog', data),
+    update: (id: string, data: Record<string, unknown>) =>
+      http.patch<{ post: AdminBlogPost }>(`/admin/blog/${id}`, data),
+    remove: (id: string) => http.del<{ ok: true }>(`/admin/blog/${id}`),
+  },
+
+  testimonials: {
+    list: (params) => http.get<Paginated<AdminTestimonial>>('/admin/testimonials', clean(params)),
+    moderate: (id: string, data: { status?: string; featured?: boolean; moderationNote?: string }) =>
+      http.patch<{ testimonial: AdminTestimonial }>(`/admin/testimonials/${id}`, data),
+  },
+
+  socialLinks: {
+    list: () => http.get<{ links: AdminSocialLink[] }>('/admin/social-links'),
+    save: (platform: SocialPlatform, data: { url: string; order: number; active: boolean }) =>
+      http.put<{ link: AdminSocialLink }>(`/admin/social-links/${platform}`, data),
+    remove: (platform: SocialPlatform) => http.del<{ ok: true }>(`/admin/social-links/${platform}`),
   },
 
   gatewayPayments: {
