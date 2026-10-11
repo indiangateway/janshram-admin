@@ -12,7 +12,7 @@ import {
   OFFLINE_MESSAGE,
 } from '../network';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'https://janshram-backend.onrender.com/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'https://api.janshram.in/api/v1';
 const TOKEN_KEY = 'janshram_admin_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);

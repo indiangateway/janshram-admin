@@ -25,6 +25,13 @@ npm run typecheck  # tsc --noEmit
 
 Demo login: any credentials (pre-filled `admin@janshram.in` / `admin123`).
 
+## Hostinger deployment
+
+Connect this repository's `main` branch to the `admin.janshram.in` site in
+Hostinger. Build with `npm ci && npm run build` and publish the generated
+`dist/` directory. The tracked `.env.production` disables mock mode and points
+the admin console at `https://api.janshram.in/api/v1`.
+
 ## Data layer
 
 Two interchangeable adapters implement the same typed `AdminApi` surface, so
