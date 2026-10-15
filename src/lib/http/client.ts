@@ -12,7 +12,20 @@ import {
   OFFLINE_MESSAGE,
 } from '../network';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'https://api.janshram.in/api/v1';
+// A bare origin ("https://api.janshram.in") is the easy thing to paste into a
+// hosting panel, and it sends every call to /admin/... where the server has
+// nothing but a 404 — login included. The API lives under /api/v1, so a URL
+// with no path gets it; one that names a path is taken as given.
+function apiBase(raw: string): string {
+  const url = raw.trim().replace(/\/+$/, '');
+  try {
+    return new URL(url).pathname === '/' ? `${url}/api/v1` : url;
+  } catch {
+    return url;
+  }
+}
+
+const BASE_URL = apiBase(import.meta.env.VITE_API_URL ?? 'https://api.janshram.in/api/v1');
 const TOKEN_KEY = 'janshram_admin_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
