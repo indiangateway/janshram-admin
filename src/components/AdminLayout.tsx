@@ -4,14 +4,32 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { cn } from './ui/utils';
 
+const COLLAPSE_KEY = 'janshram-admin:sidebar-collapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Remembered per browser: whoever folds the rail to get room for a wide
+  // table wants it folded on the next page too.
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggleCollapsed = () =>
+    setCollapsed((c) => {
+      try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1'); } catch { /* private mode */ }
+      return !c;
+    });
 
   return (
     <div className="h-screen flex bg-muted/30 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden lg:block">
-        <Sidebar />
+        <Sidebar collapsed={collapsed} />
       </div>
 
       {/* Mobile drawer */}
@@ -25,7 +43,7 @@ export function AdminLayout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar onMenu={() => setMobileOpen(true)} />
+        <Topbar onMenu={() => setMobileOpen(true)} collapsed={collapsed} onToggleSidebar={toggleCollapsed} />
         <main className="flex-1 overflow-y-auto">
           {/* min-h-full, not h-full.
               A workspace page (tickets, chats) wants to fill the scroll area and

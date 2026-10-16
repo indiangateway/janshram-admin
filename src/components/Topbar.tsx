@@ -1,4 +1,4 @@
-import { Menu, LogOut, Search, Sun, Moon } from 'lucide-react';
+import { Menu, LogOut, Search, Sun, Moon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -10,7 +10,15 @@ import {
 } from './ui/dropdown-menu';
 import { useTheme } from '../context/ThemeContext';
 
-export function Topbar({ onMenu }: { onMenu: () => void }) {
+export function Topbar({
+  onMenu,
+  collapsed = false,
+  onToggleSidebar,
+}: {
+  onMenu: () => void;
+  collapsed?: boolean;
+  onToggleSidebar?: () => void;
+}) {
   const { admin, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
@@ -24,16 +32,29 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
   return (
     <header className="h-16 shrink-0 border-b bg-background/80 backdrop-blur sticky top-0 z-20 flex items-center gap-3 px-4 md:px-6">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu}>
+      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open menu">
         <Menu className="size-5" />
       </Button>
+      {onToggleSidebar && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden lg:inline-flex"
+          onClick={onToggleSidebar}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+          title={collapsed ? 'Expand menu' : 'Collapse menu'}
+        >
+          {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+        </Button>
+      )}
 
-      <div className="relative flex-1 max-w-md hidden sm:block">
+      <div className="relative w-full max-w-md hidden sm:block">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input placeholder="Search…" className="pl-9 bg-muted/50 border-transparent" />
       </div>
 
-      <div className="flex-1 sm:hidden" />
+      {/* Pushes the theme toggle and the admin's profile to the far right. */}
+      <div className="flex-1" />
 
       <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
         {theme === 'dark' ? <Sun className="size-4.5" /> : <Moon className="size-4.5" />}
@@ -45,7 +66,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
             <Avatar className="size-8">
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">{initials}</AvatarFallback>
             </Avatar>
-            <div className="text-left hidden md:block leading-tight">
+            <div className="text-right hidden md:block leading-tight">
               <div className="text-sm font-medium">{admin?.name}</div>
               <div className="text-xs text-muted-foreground">{admin?.email}</div>
             </div>

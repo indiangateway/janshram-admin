@@ -1,8 +1,10 @@
 import { Link } from 'react-router';
 import {
   Users as UsersIcon, Wrench, CalendarCheck, IndianRupee, Star, Gavel,
-  WalletMinimal, ShieldAlert, TrendingUp, LifeBuoy,
+  WalletMinimal, ShieldAlert, TrendingUp, LifeBuoy, BadgeCheck,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Button } from '../components/ui/button';
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, PieChart, Pie, Cell,
@@ -18,6 +20,23 @@ import { Skeleton } from '../components/ui/skeleton';
 
 const PIE_COLORS = ['#0A84FF', '#34C759', '#FF9500', '#AF52DE', '#FF375F', '#5AC8FA', '#FFCC00'];
 
+/** Time-of-day greeting, in the console's own voice. */
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="h-3.5 w-1 rounded-full bg-gradient-to-b from-[#0A84FF] to-[#F47B20]" aria-hidden="true" />
+      {children}
+    </h2>
+  );
+}
+
 export function Dashboard() {
   const stats = useApi(() => adminApi.dashboard.stats(), []);
   const series = useApi(() => adminApi.dashboard.timeseries(), []);
@@ -26,15 +45,40 @@ export function Dashboard() {
   const audit = useApi(() => adminApi.dashboard.auditLog(), []);
 
   const s = stats.data?.stats;
+  const { admin } = useAuth();
 
   return (
     <div>
-      <PageHeader title="Dashboard" description="Marketplace health at a glance" />
+      <PageHeader
+        title={`${greeting()}, ${admin?.name ?? 'Admin'} 👋`}
+        description={`${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · Marketplace health at a glance`}
+        actions={
+          s && (
+            <>
+              {s.providers.pendingVerification > 0 && (
+                <Button asChild size="sm" className="shadow-sm">
+                  <Link to="/verifications">
+                    <BadgeCheck className="size-4" /> {s.providers.pendingVerification} to verify
+                  </Link>
+                </Button>
+              )}
+              {(s.support?.openTickets ?? 0) > 0 && (
+                <Button asChild size="sm" variant="outline" className="bg-background/90 shadow-sm">
+                  <Link to="/tickets">
+                    <LifeBuoy className="size-4" /> {s.support?.openTickets} open tickets
+                  </Link>
+                </Button>
+              )}
+            </>
+          )
+        }
+      />
 
       {/* KPI row */}
+      <SectionLabel>Overview</SectionLabel>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {stats.loading || !s ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-xl" />)
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[124px] rounded-xl" />)
         ) : (
           <>
             <StatCard
@@ -43,6 +87,7 @@ export function Dashboard() {
               icon={<UsersIcon className="size-5" />}
               trend={{ value: `${s.users.newThisWeek} new`, positive: true }}
               hint="this week"
+              to="/users"
             />
             <StatCard
               label="Providers"
@@ -50,6 +95,7 @@ export function Dashboard() {
               icon={<Wrench className="size-5" />}
               accent="violet"
               hint={`${s.providers.pendingVerification} pending verification`}
+              to="/providers"
             />
             <StatCard
               label="Gross Revenue"
@@ -58,34 +104,37 @@ export function Dashboard() {
               accent="green"
               trend={{ value: formatINRCompact(s.revenue.thisMonthPaise), positive: true }}
               hint="this month"
+              to="/payments"
             />
             <StatCard
               label="Total Bookings"
               value={s.bookings.total.toLocaleString('en-IN')}
               icon={<CalendarCheck className="size-5" />}
-              accent="amber"
+              accent="orange"
               hint={`${s.bookings.pending} pending · ${s.bookings.inProgress} active`}
+              to="/bookings"
             />
           </>
         )}
       </div>
 
       {/* Secondary KPIs */}
+      <SectionLabel>Operations</SectionLabel>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {stats.loading || !s ? (
-          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-xl" />)
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[124px] rounded-xl" />)
         ) : (
           <>
-            <StatCard label="Open Tenders" value={s.tenders.open} icon={<Gavel className="size-5" />} accent="primary" hint={`${s.tenders.awarded} awarded`} />
-            <StatCard label="Avg Rating" value={s.reviews.avgRating.toFixed(2)} icon={<Star className="size-5" />} accent="amber" hint={`${s.reviews.total} reviews`} />
-            <StatCard label="Wallet Float" value={formatINRCompact(s.revenue.walletFloatPaise)} icon={<WalletMinimal className="size-5" />} accent="green" hint="held balance" />
-            <StatCard label="Flagged Reviews" value={s.reviews.flagged} icon={<ShieldAlert className="size-5" />} accent="red" hint="needs moderation" />
-            <Link to="/tickets">
-              <StatCard label="Open Tickets" value={s.support?.openTickets ?? 0} icon={<LifeBuoy className="size-5" />} accent="violet" hint="support queue" />
-            </Link>
+            <StatCard label="Open Tenders" value={s.tenders.open} icon={<Gavel className="size-5" />} accent="primary" hint={`${s.tenders.awarded} awarded`} to="/tenders" />
+            <StatCard label="Avg Rating" value={s.reviews.avgRating.toFixed(2)} icon={<Star className="size-5" />} accent="amber" hint={`${s.reviews.total} reviews`} to="/reviews" />
+            <StatCard label="Wallet Float" value={formatINRCompact(s.revenue.walletFloatPaise)} icon={<WalletMinimal className="size-5" />} accent="green" hint="held balance" to="/wallets" />
+            <StatCard label="Flagged Reviews" value={s.reviews.flagged} icon={<ShieldAlert className="size-5" />} accent="red" hint="needs moderation" to="/reviews" />
+            <StatCard label="Open Tickets" value={s.support?.openTickets ?? 0} icon={<LifeBuoy className="size-5" />} accent="violet" hint="support queue" to="/tickets" />
           </>
         )}
       </div>
+
+      <SectionLabel>Trends</SectionLabel>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
