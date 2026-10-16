@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DynamicIcon, iconNames, type IconName } from 'lucide-react/dynamic';
-import { Shapes, Search, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Icon as IconifyIcon } from '@iconify/react';
+import { Shapes, Search, Upload, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { expandQuery, isIconifyId, searchIcons } from '../lib/iconSearch';
 import { toast } from 'sonner';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -38,6 +40,10 @@ export function toIconName(name?: string | null): string {
 export function CategoryIcon({ icon, className = 'size-5' }: { icon?: string | null; className?: string }) {
   if (isCustomIcon(icon)) {
     return <CustomIcon src={icon!} className={className} />;
+  }
+  // "mdi:yoga" and the like — any of Iconify's sets, picked by service search.
+  if (isIconifyId(icon)) {
+    return <IconifyIcon icon={icon} className={className} fallback={<Shapes className={className} />} />;
   }
   const name = toIconName(icon);
   if (!VALID.has(name)) return <Shapes className={className} />;
@@ -177,32 +183,91 @@ export function IconUpload({ value, onChange }: { value: string; onChange: (icon
   );
 }
 
-// Searchable grid picker over the full lucide icon set. Value/onChange use the
-// kebab-case icon name.
-export function IconPicker({ value, onChange, limit = 60 }: { value: string; onChange: (name: string) => void; limit?: number }) {
+/** Stored value as the picker compares it: Iconify ids as-is, lucide names normalised. */
+const normalise = (v: string) => (isIconifyId(v) ? v : toIconName(v));
+
+const STARTER = [
+  'wrench', 'zap', 'hammer', 'sparkles', 'paintbrush', 'house', 'truck', 'scissors', 'leaf', 'shield', 'droplet',
+  'car', 'heart-pulse', 'dumbbell', 'sofa', 'bath', 'utensils', 'camera', 'laptop', 'stethoscope',
+  'graduation-cap', 'baby', 'flower-2', 'hand-platter',
+];
+
+/**
+ * Searchable icon grid that understands services.
+ *
+ * Type "yoga", "massage", "website", "plumber" or "darzi" and the matching
+ * icons come back from Iconify; with the box empty, it suggests icons for the
+ * category name being typed (`suggestFor`). Lucide icons whose name matches are
+ * shown too, and are all that is left when the Iconify API cannot be reached.
+ */
+export function IconPicker({
+  value,
+  onChange,
+  suggestFor = '',
+  limit = 64,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  /** The category name being entered; drives suggestions while the search box is empty. */
+  suggestFor?: string;
+  limit?: number;
+}) {
   const [query, setQuery] = useState('');
-  const selected = toIconName(value);
+  const [remote, setRemote] = useState<string[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const selected = normalise(value);
+
+  // What is being looked for: the typed search wins, else the category name.
+  const typed = query.trim();
+  const basis = typed || suggestFor.trim();
+  const suggesting = !typed && !!basis;
+
+  useEffect(() => {
+    if (!basis) { setRemote([]); setSearching(false); return; }
+    const controller = new AbortController();
+    setSearching(true);
+    // Debounced: the name field fires per keystroke.
+    const timer = setTimeout(() => {
+      searchIcons(basis, { limit, signal: controller.signal })
+        .then((ids) => { setRemote(ids); setOffline(false); })
+        .catch((e) => { if (e?.name !== 'AbortError') { setRemote([]); setOffline(true); } })
+        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
+    }, 350);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [basis, limit]);
+
+  // Lucide matches for the same expanded words, so a known lucide icon is never
+  // hidden behind the remote results — and something shows when offline.
+  const local = useMemo(() => {
+    if (!basis) return [];
+    const terms = expandQuery(basis);
+    return ALL_ICONS.filter((n) => terms.some((t) => n.includes(t))).slice(0, 16);
+  }, [basis]);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      // Show a sensible starter set (selected first), then popular basics.
-      const base = ['wrench', 'zap', 'hammer', 'sparkles', 'paintbrush', 'wind', 'house', 'truck', 'scissors', 'leaf', 'shield', 'droplet', 'brush', 'plug', 'car', 'flower', 'scissors-line-dashed', 'heart-pulse', 'dumbbell', 'sofa', 'bath', 'utensils', 'camera', 'laptop', 'stethoscope', 'graduation-cap', 'baby', 'dog', 'flower-2', 'hand-platter'];
-      const uniq = Array.from(new Set([selected, ...base].filter(Boolean)));
-      return uniq.slice(0, limit);
-    }
-    return ALL_ICONS.filter((n) => n.includes(q)).slice(0, limit);
-  }, [query, selected, limit]);
-
-  const total = query.trim() ? ALL_ICONS.filter((n) => n.includes(query.trim().toLowerCase())).length : ALL_ICONS.length;
+    if (!basis) return Array.from(new Set([selected, ...STARTER].filter(Boolean))).slice(0, limit);
+    return Array.from(new Set([...(selected ? [selected] : []), ...remote, ...local])).slice(0, limit);
+  }, [basis, remote, local, selected, limit]);
 
   return (
     <div className="space-y-2">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search 1600+ icons… (e.g. flower, scissors, dumbbell)" className="pl-9 bg-background" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by service… (yoga, massage, website, plumber, darzi)"
+          className="pl-9 bg-background"
+        />
+        {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />}
       </div>
-      <div className="grid grid-cols-8 gap-1.5 max-h-52 overflow-y-auto p-0.5">
+      {suggesting && (
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Sparkles className="size-3 text-primary" /> Suggested for “{basis}”
+        </p>
+      )}
+      <div className="grid grid-cols-8 gap-1.5 max-h-56 overflow-y-auto p-0.5">
         {results.map((n) => (
           <button
             key={n}
@@ -213,14 +278,20 @@ export function IconPicker({ value, onChange, limit = 60 }: { value: string; onC
               selected === n ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'
             }`}
           >
-            <DynamicIcon name={n as IconName} className="size-4" fallback={() => <Shapes className="size-4" />} />
+            <CategoryIcon icon={n} className="size-5" />
           </button>
         ))}
       </div>
       <p className="text-xs text-muted-foreground">
-        {query.trim()
-          ? `${Math.min(results.length, limit)} of ${total} match "${query.trim()}"${total > limit ? ' — refine to narrow' : ''}`
-          : `Search across ${total.toLocaleString()} icons. Selected: ${selected || 'none'}`}
+        {offline
+          ? 'Icon search is offline — showing built-in icons only.'
+          : basis
+            ? searching && !results.length
+              ? 'Searching…'
+              : results.length
+                ? `${results.length} icons for “${basis}”. Selected: ${selected || 'none'}`
+                : `Nothing for “${basis}” — try another word (e.g. the tool, not the trade).`
+            : `Type a service to search 200,000+ icons. Selected: ${selected || 'none'}`}
       </p>
     </div>
   );

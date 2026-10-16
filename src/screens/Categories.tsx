@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Download, Loader2 } from 'lucide-react';
 import { adminApi } from '../lib/api';
+import { CATEGORY_CATALOGUE, planImport } from '../lib/categoryCatalogue';
 import { useApi } from '../lib/useApi';
 import { PageHeader } from '../components/PageHeader';
 import { CategoryIcon, IconPicker, IconUpload, isCustomIcon } from '../components/CategoryIcon';
@@ -59,6 +60,59 @@ export function Categories() {
     refetch();
   };
 
+  // ── Import the standard catalogue ──
+  // Built from the plan rather than blindly posting the list: anything that
+  // already exists is left exactly as the admin has it, so a second import (or
+  // one after a partial failure) only fills the gaps.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const plan = importOpen && data ? planImport(data.categories) : null;
+
+  const runImport = async () => {
+    if (!plan) return;
+    const total = plan.newCategories + plan.newSubCategories;
+    setImporting(true);
+    setProgress({ done: 0, total });
+    let done = 0;
+    const failed: string[] = [];
+    // One at a time: the API gives each new row the next order slot, and
+    // parallel creates would race for the same one.
+    for (const step of plan.create) {
+      let parentId = step.parentId;
+      if (!parentId) {
+        try {
+          const { category } = await adminApi.categories.create({ name: step.entry.name, icon: step.entry.icon, parentId: null });
+          parentId = category.id;
+        } catch {
+          failed.push(step.entry.name);
+          done += 1 + step.children.length;
+          setProgress({ done, total });
+          continue;
+        }
+        done += 1;
+        setProgress({ done, total });
+      }
+      for (const child of step.children) {
+        try {
+          await adminApi.categories.create({ name: child, icon: step.entry.icon, parentId });
+        } catch {
+          failed.push(child);
+        }
+        done += 1;
+        setProgress({ done, total });
+      }
+    }
+    setImporting(false);
+    setImportOpen(false);
+    refetch();
+    if (failed.length) {
+      toast.error(`${failed.length} could not be created: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}. Run the import again to retry.`);
+    } else {
+      toast.success(`Imported ${plan.newCategories} categories and ${plan.newSubCategories} sub-categories`);
+    }
+  };
+
   const remove = async () => {
     if (!toDelete) return;
     await adminApi.categories.remove(toDelete.id);
@@ -72,8 +126,70 @@ export function Categories() {
       <PageHeader
         title="Categories"
         description="Service categories shown across the app"
-        actions={<Button onClick={() => openCreate()}><Plus className="size-4" /> New category</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)} disabled={loading}>
+              <Download className="size-4" /> Import catalogue
+            </Button>
+            <Button onClick={() => openCreate()}><Plus className="size-4" /> New category</Button>
+          </div>
+        }
       />
+
+      <Dialog open={importOpen} onOpenChange={(o) => !importing && setImportOpen(o)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import the JanShram catalogue</DialogTitle>
+          </DialogHeader>
+          {plan && (
+            <div className="space-y-3 py-1 text-sm">
+              <p className="text-muted-foreground">
+                Adds the standard service list ({CATEGORY_CATALOGUE.length} categories). Nothing that already exists is
+                renamed, moved or deleted.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border p-3">
+                  <div className="text-2xl font-semibold">{plan.newCategories}</div>
+                  <div className="text-xs text-muted-foreground">new categories</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-2xl font-semibold">{plan.newSubCategories}</div>
+                  <div className="text-xs text-muted-foreground">new sub-categories</div>
+                </div>
+              </div>
+              {plan.skipped.length > 0 && (
+                <details className="rounded-lg border p-3">
+                  <summary className="cursor-pointer text-xs text-muted-foreground">
+                    {plan.skipped.length} already exist and will be skipped
+                  </summary>
+                  <p className="mt-2 text-xs leading-relaxed">{plan.skipped.join(' · ')}</p>
+                </details>
+              )}
+              {importing && (
+                <div className="space-y-1">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{progress.done} of {progress.total}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</Button>
+            <Button
+              onClick={runImport}
+              disabled={importing || !plan || plan.newCategories + plan.newSubCategories === 0}
+            >
+              {importing ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              {plan && plan.newCategories + plan.newSubCategories === 0 ? 'Everything is already there' : 'Import'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="space-y-3">
         {loading
@@ -182,7 +298,7 @@ export function Categories() {
                   <TabsTrigger value="custom" className="flex-1">Custom image</TabsTrigger>
                 </TabsList>
                 <TabsContent value="library" className="mt-3">
-                  <IconPicker value={isCustomIcon(icon) ? '' : icon} onChange={setIcon} />
+                  <IconPicker value={isCustomIcon(icon) ? '' : icon} onChange={setIcon} suggestFor={name} />
                   {isCustomIcon(icon) && (
                     <p className="mt-2 text-xs text-muted-foreground">
                       A custom image is set — picking a library icon here replaces it.
